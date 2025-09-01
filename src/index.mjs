@@ -210,7 +210,7 @@ async function main() {
         webhookKey: IFTTT_WEBHOOK_KEY,
         eventName: IFTTT_EVENT_NAME,
         text: caption,
-        image: url,
+        videoUrl: url,
       });
       iftttOk = iftttRes.ok;
       console.log(`[IFTTT] ${iftttOk ? "OK" : "NG"}`);
