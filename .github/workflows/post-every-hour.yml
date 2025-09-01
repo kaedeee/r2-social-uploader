@@ -1,0 +1,56 @@
+name: R2 → IG/YouTube hourly
+
+on:
+  schedule:
+    # JST 10:00-23:59 → UTC 1:00-14:59
+    - cron: "*/10 1-14 * * *"
+  workflow_dispatch: {}
+  # デバッグ用：push時に実行（開発中のみ使用）
+  push:
+    branches: [main]
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Print times
+        run: |
+          echo "Now UTC: $(date -u)"
+          echo "Now JST: $(TZ=Asia/Tokyo date)"
+          echo "Event: ${{ github.event_name }}"
+          echo "Schedule expr: ${{ github.event.schedule }}"
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+
+      - name: Run poster
+        env:
+          # --- R2 ---
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+
+          # --- Instagram: JSON array ---
+          IG_ACCOUNTS: ${{ secrets.IG_ACCOUNTS }}
+
+          # --- YouTube: common + JSON array per channel ---
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          YT_ACCOUNTS: ${{ secrets.YT_ACCOUNTS }}
+
+          # --- IFTTT ---
+          IFTTT_WEBHOOK_KEY: ${{ secrets.IFTTT_WEBHOOK_KEY }}
+          IFTTT_EVENT_NAME: "r2_to_threads"
+
+          # --- options ---
+          POST_WINDOW_JST: "10-23"
+          YT_DAILY_LIMIT: "60"
+          # DRY_RUN: "1"
+        run: npm run post
