@@ -155,24 +155,24 @@ async function main() {
   const igAcc = pickRandom(IG_LIST);
   const ytAcc = pickRandom(YT_LIST);
 
-  // ===== Instagram =====
-  let igOk = false;
+  // ===== IFTTT =====
+  let iftttOk = false;
   try {
     if (DRY_RUN === "1") {
-      console.log("[IG] DRY_RUN → skip");
-      igOk = true;
+      console.log("[IFTTT] DRY_RUN → skip");
+      iftttOk = true;
     } else {
-      const igRes = await postInstagram({
-        igUserId: igAcc.userId,
-        accessToken: igAcc.accessToken,
-        mediaUrl: url,
-        caption,
+      const iftttRes = await postIFTTT({
+        webhookKey: IFTTT_WEBHOOK_KEY,
+        eventName: IFTTT_EVENT_NAME,
+        text: caption,
+        videoUrl: url,
       });
-      igOk = igRes.ok;
-      console.log(`[IG] ${igOk ? "OK" : "NG"} id=${igRes.id || "-"}`);
+      iftttOk = iftttRes.ok;
+      console.log(`[IFTTT] ${iftttOk ? "OK" : "NG"}`);
     }
   } catch (e) {
-    console.error("[IG] error", e?.response?.data || e);
+    console.error("[IFTTT] error", e?.response?.data || e);
   }
 
   // ===== YouTube =====
@@ -199,24 +199,24 @@ async function main() {
     console.error("[YT] error", e?.response?.data || e);
   }
 
-  // ===== IFTTT =====
-  let iftttOk = false;
+  // ===== Instagram =====
+  let igOk = false;
   try {
     if (DRY_RUN === "1") {
-      console.log("[IFTTT] DRY_RUN → skip");
-      iftttOk = true;
+      console.log("[IG] DRY_RUN → skip");
+      igOk = true;
     } else {
-      const iftttRes = await postIFTTT({
-        webhookKey: IFTTT_WEBHOOK_KEY,
-        eventName: IFTTT_EVENT_NAME,
-        text: caption,
-        videoUrl: url,
+      const igRes = await postInstagram({
+        igUserId: igAcc.userId,
+        accessToken: igAcc.accessToken,
+        mediaUrl: url,
+        caption,
       });
-      iftttOk = iftttRes.ok;
-      console.log(`[IFTTT] ${iftttOk ? "OK" : "NG"}`);
+      igOk = igRes.ok;
+      console.log(`[IG] ${igOk ? "OK" : "NG"} id=${igRes.id || "-"}`);
     }
   } catch (e) {
-    console.error("[IFTTT] error", e?.response?.data || e);
+    console.error("[IG] error", e?.response?.data || e);
   }
 
   // ===== 成功したら削除 =====
