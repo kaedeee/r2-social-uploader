@@ -111,12 +111,31 @@ function parseMetaFromFilename(key) {
   const file = decodeURIComponent(key.split("/").pop() || key);
   const base = file.replace(/\.[^.]+$/, ""); // 拡張子除去
   const underscored = base.replace(/_/g, " ");
-  const caption = underscored.replace(/\s+/g, " ").trim(); // IG/説明 共通
+  let caption = underscored.replace(/\s+/g, " ").trim(); // IG/説明 共通
 
-  // 2) YouTube タイトルは先頭100文字に丸め（サロゲートに配慮）
+  // 2) プレフィックス検出と除去
+  let skipYouTube = false;
+  let skipInstagram = false;
+
+  if (caption.startsWith("YT SK")) {
+    skipYouTube = true;
+    caption = caption.replace(/^YT SK\s+/, "").trim();
+  } else if (caption.startsWith("YT IG SK")) {
+    skipYouTube = true;
+    skipInstagram = true;
+    caption = caption.replace(/^YT IG SK\s+/, "").trim();
+  }
+
+  // 3) YouTube タイトルは先頭100文字に丸め（サロゲートに配慮）
   const title = [...caption].slice(0, 100).join("");
 
-  return { caption, ytTitle: title, ytDescription: caption };
+  return {
+    caption,
+    ytTitle: title,
+    ytDescription: caption,
+    skipYouTube,
+    skipInstagram,
+  };
 }
 
 function pickRandom(arr) {
@@ -147,9 +166,14 @@ async function main() {
   }
 
   // メタ生成
-  const { caption, ytTitle, ytDescription } = parseMetaFromFilename(key);
+  const { caption, ytTitle, ytDescription, skipYouTube, skipInstagram } =
+    parseMetaFromFilename(key);
   console.log(`IG caption: ${caption}`);
   console.log(`YT title: ${ytTitle}`);
+  if (skipYouTube)
+    console.log(`[SKIP] YouTube upload skipped due to YT_SK prefix`);
+  if (skipInstagram)
+    console.log(`[SKIP] Instagram upload skipped due to YT_IG_SK prefix`);
 
   // ランダムにアカウントを選択
   const igAcc = pickRandom(IG_LIST);
@@ -177,46 +201,58 @@ async function main() {
 
   // ===== YouTube =====
   let ytOk = false;
-  try {
-    if (DRY_RUN === "1") {
-      console.log("[YT] DRY_RUN → skip");
-      ytOk = true;
-    } else {
-      const ytRes = await uploadYouTube({
-        clientId: GOOGLE_CLIENT_ID,
-        clientSecret: GOOGLE_CLIENT_SECRET,
-        refreshToken: ytAcc.refreshToken,
-        sourceUrl: url,
-        title: ytTitle,
-        description: ytDescription,
-        privacyStatus: "public",
-        dailyLimit: parseInt(YT_DAILY_LIMIT, 10),
-      });
-      ytOk = ytRes.ok;
-      console.log(`[YT] ${ytOk ? "OK" : "NG"} videoId=${ytRes.videoId || "-"}`);
+  if (skipYouTube) {
+    console.log("[YT] SKIP → skipped due to YT_SK prefix");
+    ytOk = true; // スキップは成功として扱う
+  } else {
+    try {
+      if (DRY_RUN === "1") {
+        console.log("[YT] DRY_RUN → skip");
+        ytOk = true;
+      } else {
+        const ytRes = await uploadYouTube({
+          clientId: GOOGLE_CLIENT_ID,
+          clientSecret: GOOGLE_CLIENT_SECRET,
+          refreshToken: ytAcc.refreshToken,
+          sourceUrl: url,
+          title: ytTitle,
+          description: ytDescription,
+          privacyStatus: "public",
+          dailyLimit: parseInt(YT_DAILY_LIMIT, 10),
+        });
+        ytOk = ytRes.ok;
+        console.log(
+          `[YT] ${ytOk ? "OK" : "NG"} videoId=${ytRes.videoId || "-"}`
+        );
+      }
+    } catch (e) {
+      console.error("[YT] error", e?.response?.data || e);
     }
-  } catch (e) {
-    console.error("[YT] error", e?.response?.data || e);
   }
 
   // ===== Instagram =====
   let igOk = false;
-  try {
-    if (DRY_RUN === "1") {
-      console.log("[IG] DRY_RUN → skip");
-      igOk = true;
-    } else {
-      const igRes = await postInstagram({
-        igUserId: igAcc.userId,
-        accessToken: igAcc.accessToken,
-        mediaUrl: url,
-        caption,
-      });
-      igOk = igRes.ok;
-      console.log(`[IG] ${igOk ? "OK" : "NG"} id=${igRes.id || "-"}`);
+  if (skipInstagram) {
+    console.log("[IG] SKIP → skipped due to YT_IG_SK prefix");
+    igOk = true; // スキップは成功として扱う
+  } else {
+    try {
+      if (DRY_RUN === "1") {
+        console.log("[IG] DRY_RUN → skip");
+        igOk = true;
+      } else {
+        const igRes = await postInstagram({
+          igUserId: igAcc.userId,
+          accessToken: igAcc.accessToken,
+          mediaUrl: url,
+          caption,
+        });
+        igOk = igRes.ok;
+        console.log(`[IG] ${igOk ? "OK" : "NG"} id=${igRes.id || "-"}`);
+      }
+    } catch (e) {
+      console.error("[IG] error", e?.response?.data || e);
     }
-  } catch (e) {
-    console.error("[IG] error", e?.response?.data || e);
   }
 
   // ===== 成功したら削除 =====
