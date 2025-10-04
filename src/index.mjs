@@ -172,8 +172,10 @@ async function main() {
   console.log(`YT title: ${ytTitle}`);
   if (skipYouTube)
     console.log(`[SKIP] YouTube upload skipped due to YT_SK prefix`);
-  if (skipInstagram)
+  if (skipInstagram) {
     console.log(`[SKIP] Instagram upload skipped due to YT_IG_SK prefix`);
+    console.log(`[SKIP] IFTTT upload skipped due to YT_IG_SK prefix`);
+  }
 
   // ランダムにアカウントを選択
   const igAcc = pickRandom(IG_LIST);
@@ -181,22 +183,27 @@ async function main() {
 
   // ===== IFTTT =====
   let iftttOk = false;
-  try {
-    if (DRY_RUN === "1") {
-      console.log("[IFTTT] DRY_RUN → skip");
-      iftttOk = true;
-    } else {
-      const iftttRes = await postIFTTT({
-        webhookKey: IFTTT_WEBHOOK_KEY,
-        eventName: IFTTT_EVENT_NAME,
-        text: caption,
-        videoUrl: url,
-      });
-      iftttOk = iftttRes.ok;
-      console.log(`[IFTTT] ${iftttOk ? "OK" : "NG"}`);
+  if (skipInstagram) {
+    console.log("[IFTTT] SKIP → skipped due to YT_IG_SK prefix");
+    iftttOk = true; // スキップは成功として扱う
+  } else {
+    try {
+      if (DRY_RUN === "1") {
+        console.log("[IFTTT] DRY_RUN → skip");
+        iftttOk = true;
+      } else {
+        const iftttRes = await postIFTTT({
+          webhookKey: IFTTT_WEBHOOK_KEY,
+          eventName: IFTTT_EVENT_NAME,
+          text: caption,
+          videoUrl: url,
+        });
+        iftttOk = iftttRes.ok;
+        console.log(`[IFTTT] ${iftttOk ? "OK" : "NG"}`);
+      }
+    } catch (e) {
+      console.error("[IFTTT] error", e?.response?.data || e);
     }
-  } catch (e) {
-    console.error("[IFTTT] error", e?.response?.data || e);
   }
 
   // ===== YouTube =====
@@ -256,7 +263,20 @@ async function main() {
   }
 
   // ===== 成功したら削除 =====
-  if (igOk && ytOk && iftttOk) {
+  // スキップ条件に応じた成功判定
+  let shouldDelete = false;
+  if (skipInstagram) {
+    // YT_IG_SK: IFTTT のみ実行、成功すれば削除
+    shouldDelete = iftttOk;
+  } else if (skipYouTube) {
+    // YT_SK: Instagram + IFTTT 実行、両方成功すれば削除
+    shouldDelete = igOk && iftttOk;
+  } else {
+    // 通常: 全サービス実行、全て成功すれば削除
+    shouldDelete = igOk && ytOk && iftttOk;
+  }
+
+  if (shouldDelete) {
     if (DRY_RUN === "1") {
       console.log(`[DELETE] DRY_RUN → skip delete ${key}`);
     } else {
