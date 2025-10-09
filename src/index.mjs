@@ -174,7 +174,6 @@ async function main() {
     console.log(`[SKIP] YouTube upload skipped due to YT_SK prefix`);
   if (skipInstagram) {
     console.log(`[SKIP] Instagram upload skipped due to YT_IG_SK prefix`);
-    console.log(`[SKIP] IFTTT upload skipped due to YT_IG_SK prefix`);
   }
 
   // ランダムにアカウントを選択
@@ -183,27 +182,22 @@ async function main() {
 
   // ===== IFTTT =====
   let iftttOk = false;
-  if (skipInstagram) {
-    console.log("[IFTTT] SKIP → skipped due to YT_IG_SK prefix");
-    iftttOk = true; // スキップは成功として扱う
-  } else {
-    try {
-      if (DRY_RUN === "1") {
-        console.log("[IFTTT] DRY_RUN → skip");
-        iftttOk = true;
-      } else {
-        const iftttRes = await postIFTTT({
-          webhookKey: IFTTT_WEBHOOK_KEY,
-          eventName: IFTTT_EVENT_NAME,
-          text: caption,
-          videoUrl: url,
-        });
-        iftttOk = iftttRes.ok;
-        console.log(`[IFTTT] ${iftttOk ? "OK" : "NG"}`);
-      }
-    } catch (e) {
-      console.error("[IFTTT] error", e?.response?.data || e);
+  try {
+    if (DRY_RUN === "1") {
+      console.log("[IFTTT] DRY_RUN → skip");
+      iftttOk = true;
+    } else {
+      const iftttRes = await postIFTTT({
+        webhookKey: IFTTT_WEBHOOK_KEY,
+        eventName: IFTTT_EVENT_NAME,
+        text: caption,
+        videoUrl: url,
+      });
+      iftttOk = iftttRes.ok;
+      console.log(`[IFTTT] ${iftttOk ? "OK" : "NG"}`);
     }
+  } catch (e) {
+    console.error("[IFTTT] error", e?.response?.data || e);
   }
 
   // ===== YouTube =====

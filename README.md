@@ -27,7 +27,7 @@ Cloudflare R2 にアップロードした動画を、**毎時（JST 日中）に
 
 - **Cloudflare アカウント**（R2 有効化）
 - **Instagram プロアカウント**（ビジネス/クリエイター）
-- **YouTube アカウント（2 つ）**
+- **YouTube アカウント（3 つ）**
 
   - Google Cloud Console で OAuth クライアント作成
   - 各チャンネルごとに `refresh_token` を取得
@@ -68,7 +68,7 @@ Cloudflare R2 にアップロードした動画を、**毎時（JST 日中）に
 ]
 ```
 
-#### YouTube（2 アカ）
+#### YouTube（3 アカ）
 
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
@@ -77,6 +77,33 @@ Cloudflare R2 にアップロードした動画を、**毎時（JST 日中）に
 ```json
 [{ "refreshToken": "1//0g...Aa" }, { "refreshToken": "1//0h...Bb" }]
 ```
+
+**YouTube リフレッシュトークンの取得方法：**
+
+1. **Google Cloud Console で OAuth クライアントを作成**
+
+   - Google Cloud Console → 認証情報 → OAuth 2.0 クライアント ID を作成
+   - アプリケーションの種類: 「デスクトップアプリケーション」
+   - リダイレクト URI: `http://localhost:3000`
+
+2. **リフレッシュトークンを生成**
+
+   ```bash
+   # 環境変数を設定（.envファイルまたは直接設定）
+   export GOOGLE_CLIENT_ID="your_client_id"
+   export GOOGLE_CLIENT_SECRET="your_client_secret"
+
+   # リフレッシュトークンを生成
+   node test/youtube_refresh_token.mjs
+   ```
+
+3. **手順**
+   - コマンド実行後、表示される URL をブラウザで開く
+   - YouTube アカウントでログイン・承認
+   - 表示される認可コードをターミナルに貼り付け
+   - 取得した `refresh_token` を `YT_ACCOUNTS` に追加
+
+**注意：** 各 YouTube チャンネルごとに個別にリフレッシュトークンを取得する必要があります。
 
 #### IFTTT（Threads）
 
