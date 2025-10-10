@@ -117,13 +117,13 @@ function parseMetaFromFilename(key) {
   let skipYouTube = false;
   let skipInstagram = false;
 
-  if (caption.startsWith("YT SK")) {
-    skipYouTube = true;
-    caption = caption.replace(/^YT SK\s+/, "").trim();
-  } else if (caption.startsWith("YT IG SK")) {
+  if (caption.startsWith("YT IG SK")) {
     skipYouTube = true;
     skipInstagram = true;
     caption = caption.replace(/^YT IG SK\s+/, "").trim();
+  } else if (caption.startsWith("YT SK")) {
+    skipYouTube = true;
+    caption = caption.replace(/^YT SK\s+/, "").trim();
   }
 
   // 3) YouTube タイトルは先頭100文字に丸め（サロゲートに配慮）
