@@ -17,6 +17,7 @@ const {
   R2_PUBLIC_BASE_URL,
 
   IG_ACCOUNTS, // ★ JSON配列
+  ROB_IG_ACCOUNT, // ★ ROB用のInstagramアカウント
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
   YT_ACCOUNTS, // ★ JSON配列
@@ -39,6 +40,7 @@ if (
   throw new Error("Missing R2 envs.");
 }
 if (!IG_ACCOUNTS) throw new Error("Missing IG_ACCOUNTS (JSON).");
+if (!ROB_IG_ACCOUNT) throw new Error("Missing ROB_IG_ACCOUNT (JSON).");
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !YT_ACCOUNTS) {
   throw new Error(
     "Missing YouTube envs (GOOGLE_CLIENT_ID/SECRET, YT_ACCOUNTS)."
@@ -49,6 +51,7 @@ if (!IFTTT_WEBHOOK_KEY) {
 }
 
 const IG_LIST = JSON.parse(IG_ACCOUNTS); // [{ userId, accessToken }, ...]
+const ROB_IG = JSON.parse(ROB_IG_ACCOUNT); // { userId, accessToken }
 const YT_LIST = JSON.parse(YT_ACCOUNTS); // [{ refreshToken }, ...]
 
 const s3 = new S3Client({
@@ -116,8 +119,13 @@ function parseMetaFromFilename(key) {
   // 2) プレフィックス検出と除去
   let skipYouTube = false;
   let skipInstagram = false;
+  let isRob = false;
 
-  if (caption.startsWith("YT_IG_SK")) {
+  if (caption.startsWith("ROB")) {
+    isRob = true;
+    skipYouTube = true;
+    caption = caption.replace(/^ROB\s+/, "").trim();
+  } else if (caption.startsWith("YT_IG_SK")) {
     skipYouTube = true;
     skipInstagram = true;
     caption = caption.replace(/^YT_IG_SK\s+/, "").trim();
@@ -135,6 +143,7 @@ function parseMetaFromFilename(key) {
     ytDescription: caption,
     skipYouTube,
     skipInstagram,
+    isRob,
   };
 }
 
@@ -166,18 +175,23 @@ async function main() {
   }
 
   // メタ生成
-  const { caption, ytTitle, ytDescription, skipYouTube, skipInstagram } =
+  const { caption, ytTitle, ytDescription, skipYouTube, skipInstagram, isRob } =
     parseMetaFromFilename(key);
   console.log(`IG caption: ${caption}`);
   console.log(`YT title: ${ytTitle}`);
   if (skipYouTube)
-    console.log(`[SKIP] YouTube upload skipped due to YT_SK prefix`);
+    console.log(
+      `[SKIP] YouTube upload skipped due to ${isRob ? "ROB" : "YT_SK"} prefix`
+    );
   if (skipInstagram) {
     console.log(`[SKIP] Instagram upload skipped due to YT_IG_SK prefix`);
   }
+  if (isRob) {
+    console.log(`[ROB] Using ROB Instagram account and IFTTT type: rob`);
+  }
 
   // ランダムにアカウントを選択
-  const igAcc = pickRandom(IG_LIST);
+  const igAcc = isRob ? ROB_IG : pickRandom(IG_LIST);
   const ytAcc = pickRandom(YT_LIST);
 
   // ===== IFTTT =====
@@ -192,6 +206,7 @@ async function main() {
         eventName: IFTTT_EVENT_NAME,
         text: caption,
         videoUrl: url,
+        type: isRob ? "rob" : undefined,
       });
       iftttOk = iftttRes.ok;
       console.log(`[IFTTT] ${iftttOk ? "OK" : "NG"}`);
@@ -262,6 +277,9 @@ async function main() {
   if (skipInstagram) {
     // YT_IG_SK: IFTTT のみ実行、成功すれば削除
     shouldDelete = iftttOk;
+  } else if (isRob) {
+    // ROB: Instagram (ROB_IG) + IFTTT 実行、両方成功すれば削除
+    shouldDelete = igOk && iftttOk;
   } else if (skipYouTube) {
     // YT_SK: Instagram + IFTTT 実行、両方成功すれば削除
     shouldDelete = igOk && iftttOk;

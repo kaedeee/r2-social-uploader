@@ -5,6 +5,7 @@ export async function postIFTTT({
   eventName = "r2_to_threads",
   text,
   videoUrl,
+  type,
 }) {
   try {
     const webhookUrl = `https://maker.ifttt.com/trigger/${eventName}/json/with/key/${webhookKey}`;
@@ -12,6 +13,7 @@ export async function postIFTTT({
     const payload = {
       text,
       videoUrl,
+      ...(type && { type }),
     };
 
     const response = await axios.post(webhookUrl, payload, {
