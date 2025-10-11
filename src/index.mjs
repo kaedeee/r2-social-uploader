@@ -110,29 +110,32 @@ async function head200(url) {
 
 // === ファイル名→メタ生成 ===
 function parseMetaFromFilename(key) {
-  // 1) ファイル名（拡張子除去、URLデコード、_→空白、空白正規化）
+  // 1) ファイル名（拡張子除去、URLデコード）
   const file = decodeURIComponent(key.split("/").pop() || key);
   const base = file.replace(/\.[^.]+$/, ""); // 拡張子除去
-  const underscored = base.replace(/_/g, " ");
-  let caption = underscored.replace(/\s+/g, " ").trim(); // IG/説明 共通
 
-  // 2) プレフィックス検出と除去
+  // 2) プレフィックス検出と除去（_をスペースに変換する前に実行）
   let skipYouTube = false;
   let skipInstagram = false;
   let isRob = false;
+  let processedBase = base;
 
-  if (caption.startsWith("ROB")) {
+  if (base.startsWith("ROB_")) {
     isRob = true;
     skipYouTube = true;
-    caption = caption.replace(/^ROB\s+/, "").trim();
-  } else if (caption.startsWith("YT IG SK")) {
+    processedBase = base.replace(/^ROB_/, "");
+  } else if (base.startsWith("YT_IG_SK_")) {
     skipYouTube = true;
     skipInstagram = true;
-    caption = caption.replace(/^YT IG SK\s+/, "").trim();
-  } else if (caption.startsWith("YT SK")) {
+    processedBase = base.replace(/^YT_IG_SK_/, "");
+  } else if (base.startsWith("YT_SK_")) {
     skipYouTube = true;
-    caption = caption.replace(/^YT SK\s+/, "").trim();
+    processedBase = base.replace(/^YT_SK_/, "");
   }
+
+  // 3) _→空白、空白正規化
+  const underscored = processedBase.replace(/_/g, " ");
+  let caption = underscored.replace(/\s+/g, " ").trim(); // IG/説明 共通
 
   // 3) YouTube タイトルは先頭100文字に丸め（サロゲートに配慮）
   const title = [...caption].slice(0, 100).join("");
