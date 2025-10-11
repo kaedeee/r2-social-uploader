@@ -39,6 +39,7 @@ jobs:
 
           # --- Instagram: JSON array ---
           IG_ACCOUNTS: ${{ secrets.IG_ACCOUNTS }}
+          ROB_IG_ACCOUNT: ${{ secrets.ROB_IG_ACCOUNT }}
 
           # --- YouTube: common + JSON array per channel ---
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
