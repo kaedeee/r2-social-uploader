@@ -124,13 +124,13 @@ function parseMetaFromFilename(key) {
     isRob = true;
     skipYouTube = true;
     processedBase = base.replace(/^ROB_/, "");
-  } else if (base.startsWith("YT_IG_SK_")) {
+  } else if (base.startsWith("YT_IG_SK")) {
     skipYouTube = true;
     skipInstagram = true;
-    processedBase = base.replace(/^YT_IG_SK_/, "");
-  } else if (base.startsWith("YT_SK_")) {
+    processedBase = base.replace(/^YT_IG_SK/, "");
+  } else if (base.startsWith("YT_SK")) {
     skipYouTube = true;
-    processedBase = base.replace(/^YT_SK_/, "");
+    processedBase = base.replace(/^YT_SK/, "");
   }
 
   // 3) _→空白、空白正規化
