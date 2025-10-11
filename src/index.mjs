@@ -125,13 +125,13 @@ function parseMetaFromFilename(key) {
     isRob = true;
     skipYouTube = true;
     caption = caption.replace(/^ROB\s+/, "").trim();
-  } else if (caption.startsWith("YT_IG_SK")) {
+  } else if (caption.startsWith("YT IG SK")) {
     skipYouTube = true;
     skipInstagram = true;
-    caption = caption.replace(/^YT_IG_SK\s+/, "").trim();
-  } else if (caption.startsWith("YT_SK")) {
+    caption = caption.replace(/^YT IG SK\s+/, "").trim();
+  } else if (caption.startsWith("YT SK")) {
     skipYouTube = true;
-    caption = caption.replace(/^YT_SK\s+/, "").trim();
+    caption = caption.replace(/^YT SK\s+/, "").trim();
   }
 
   // 3) YouTube タイトルは先頭100文字に丸め（サロゲートに配慮）
