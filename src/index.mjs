@@ -111,7 +111,30 @@ async function head200(url) {
 // === ファイル名→メタ生成 ===
 function parseMetaFromFilename(key) {
   // 1) ファイル名（拡張子除去、URLデコード）
-  const file = decodeURIComponent(key.split("/").pop() || key);
+  let file;
+  const rawFile = key.split("/").pop() || key;
+
+  try {
+    file = decodeURIComponent(rawFile);
+  } catch (e) {
+    // URLデコードに失敗した場合は問題のある文字を削除して再試行
+    console.warn(`[WARN] Failed to decode URI component, cleaning: ${rawFile}`);
+    const cleaned = rawFile.replace(/[^\x00-\x7F]/g, ""); // ASCII文字以外を削除
+    try {
+      file = decodeURIComponent(cleaned);
+    } catch (e2) {
+      // それでも失敗した場合は元の文字列を使用
+      console.warn(`[WARN] Still failed after cleaning, using raw: ${rawFile}`);
+      file = rawFile;
+    }
+  }
+
+  // 絵文字のみを削除
+  file = file.replace(
+    /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu,
+    ""
+  );
+
   const base = file.replace(/\.[^.]+$/, ""); // 拡張子除去
 
   // 2) プレフィックス検出と除去（_をスペースに変換する前に実行）
