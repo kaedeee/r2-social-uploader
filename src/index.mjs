@@ -72,6 +72,24 @@ function inPostWindowJST() {
   return hour >= start && hour <= end;
 }
 
+async function deleteVideo(key, reason = "immediate") {
+  try {
+    if (DRY_RUN === "1") {
+      console.log(
+        `[DELETE_${reason.toUpperCase()}] DRY_RUN → skip delete ${key}`
+      );
+    } else {
+      await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+      console.log(`[DELETE_${reason.toUpperCase()}] deleted: ${key}`);
+    }
+  } catch (error) {
+    console.error(
+      `[DELETE_${reason.toUpperCase()}] error deleting ${key}:`,
+      error
+    );
+  }
+}
+
 async function pickOneObject() {
   // バケット直下から最年長1件
   const list = await s3.send(
@@ -297,30 +315,30 @@ async function main() {
     }
   }
 
-  // ===== 成功したら削除 =====
-  // スキップ条件に応じた成功判定
-  let shouldDelete = false;
+  // ===== 必要な投稿が全て完了したら30秒後に削除 =====
+  let allRequiredPostsCompleted = false;
+
   if (skipInstagram) {
-    // YT_IG_SK: IFTTT のみ実行、成功すれば削除
-    shouldDelete = iftttOk;
+    // YT_IG_SK: IFTTT のみ実行
+    allRequiredPostsCompleted = iftttOk;
   } else if (isRob) {
-    // ROB: Instagram (ROB_IG) + IFTTT 実行、両方成功すれば削除
-    shouldDelete = igOk && iftttOk;
+    // ROB: Instagram (ROB_IG) + IFTTT 実行
+    allRequiredPostsCompleted = igOk && iftttOk;
   } else if (skipYouTube) {
-    // YT_SK: Instagram + IFTTT 実行、両方成功すれば削除
-    shouldDelete = igOk && iftttOk;
+    // YT_SK: Instagram + IFTTT 実行
+    allRequiredPostsCompleted = igOk && iftttOk;
   } else {
-    // 通常: 全サービス実行、全て成功すれば削除
-    shouldDelete = igOk && ytOk && iftttOk;
+    // 通常: Instagram + YouTube + IFTTT 実行
+    allRequiredPostsCompleted = igOk && ytOk && iftttOk;
   }
 
-  if (shouldDelete) {
-    if (DRY_RUN === "1") {
-      console.log(`[DELETE] DRY_RUN → skip delete ${key}`);
-    } else {
-      await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
-      console.log(`[DELETE] deleted: ${key}`);
-    }
+  if (allRequiredPostsCompleted) {
+    console.log(
+      `[DELETE] All required posts completed. Video deletion scheduled for 30 seconds: ${key}`
+    );
+    setTimeout(() => {
+      deleteVideo(key, "delayed");
+    }, 30000); // 30秒 = 30000ms
   } else {
     console.log(
       `[KEEP] kept: ${key} (IG:${igOk} / YT:${ytOk} / IFTTT:${iftttOk})`
