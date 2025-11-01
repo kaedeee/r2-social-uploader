@@ -206,102 +206,40 @@ function pickRandom(arr) {
 function formatErrorForSlack(error, platformName) {
   if (!error) return "Unknown error";
 
-  // YouTubeエラーの場合は重要な情報だけを抽出
-  if (platformName === "YouTube") {
-    try {
-      // axiosのエラーレスポンスの場合
-      if (error?.response?.data) {
-        const data = error.response.data;
-        // Google APIのエラーレスポンス構造に対応
-        if (data.error) {
-          const googleError = data.error;
-          const messages = [];
-
-          // メインのエラーメッセージ
-          if (googleError.message) {
-            messages.push(`Message: ${googleError.message}`);
-          }
-
-          // エラーコード
-          if (googleError.code) {
-            messages.push(`Code: ${googleError.code}`);
-          }
-
-          // ステータス
-          if (googleError.status) {
-            messages.push(`Status: ${googleError.status}`);
-          }
-
-          // 個別のエラー詳細（最初の1-2個だけ）
-          if (googleError.errors && Array.isArray(googleError.errors)) {
-            const errorDetails = googleError.errors
-              .slice(0, 2)
-              .map((err) => {
-                const parts = [];
-                if (err.message) parts.push(err.message);
-                if (err.reason) parts.push(`Reason: ${err.reason}`);
-                if (err.domain) parts.push(`Domain: ${err.domain}`);
-                return parts.join(", ");
-              })
-              .filter(Boolean);
-            if (errorDetails.length > 0) {
-              messages.push(`Details: ${errorDetails.join("; ")}`);
-            }
-          }
-
-          if (messages.length > 0) {
-            return messages.join("\n");
-          }
-        }
-
-        // error.response.dataが文字列やオブジェクトの場合
-        if (typeof data === "string") {
-          return data.length > 500 ? data.substring(0, 500) + "..." : data;
-        }
-      }
-
-      // エラーオブジェクト自体にメッセージがある場合
-      if (error.message) {
-        return error.message.length > 500
-          ? error.message.substring(0, 500) + "..."
-          : error.message;
-      }
-    } catch (e) {
-      // パースエラーの場合は元のエラーを返す
-    }
+  // ネストされたerrorオブジェクトからメッセージを再帰的に検索
+  function findMessage(obj) {
+    if (typeof obj !== "object" || obj === null) return null;
+    if (obj.message && typeof obj.message === "string") return obj.message;
+    if (obj.error) return findMessage(obj.error);
+    return null;
   }
 
-  // YouTube以外のエラー、またはフォールバック処理
-  if (typeof error === "object") {
-    // オブジェクトの場合は重要なキーだけを抽出
-    const importantKeys = ["message", "error", "code", "status", "statusCode"];
-    const extracted = {};
-
-    for (const key of importantKeys) {
-      if (error[key] !== undefined) {
-        extracted[key] = error[key];
-      }
-    }
-
-    // response.dataがある場合はそれも含める
-    if (error.response?.data) {
+  // エラーメッセージのみを抽出
+  try {
+    // axiosのエラーレスポンスの場合
+    if (error?.response?.data) {
       const data = error.response.data;
-      if (typeof data === "object" && !Array.isArray(data)) {
-        for (const key of importantKeys) {
-          if (data[key] !== undefined && extracted[key] === undefined) {
-            extracted[key] = data[key];
-          }
-        }
+
+      // ネストされたerrorオブジェクトからメッセージを検索
+      const message = findMessage(data);
+      if (message) return message;
+
+      // 文字列の場合
+      if (typeof data === "string") {
+        return data.length > 500 ? data.substring(0, 500) + "..." : data;
       }
     }
 
-    const jsonStr = JSON.stringify(extracted, null, 2);
-    return jsonStr.length > 500
-      ? jsonStr.substring(0, 500) + "\n... (truncated)"
-      : jsonStr;
+    // エラーオブジェクト自体からメッセージを検索
+    const message = findMessage(error);
+    if (message) {
+      return message.length > 500 ? message.substring(0, 500) + "..." : message;
+    }
+  } catch (e) {
+    // パースエラーの場合は元のエラーを返す
   }
 
-  // 文字列の場合
+  // フォールバック: 文字列化
   const str = String(error);
   return str.length > 500 ? str.substring(0, 500) + "..." : str;
 }
