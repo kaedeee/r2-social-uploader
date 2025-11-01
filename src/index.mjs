@@ -202,6 +202,110 @@ function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+// ==== エラー情報の要約 ====
+function formatErrorForSlack(error, platformName) {
+  if (!error) return "Unknown error";
+
+  // YouTubeエラーの場合は重要な情報だけを抽出
+  if (platformName === "YouTube") {
+    try {
+      // axiosのエラーレスポンスの場合
+      if (error?.response?.data) {
+        const data = error.response.data;
+        // Google APIのエラーレスポンス構造に対応
+        if (data.error) {
+          const googleError = data.error;
+          const messages = [];
+
+          // メインのエラーメッセージ
+          if (googleError.message) {
+            messages.push(`Message: ${googleError.message}`);
+          }
+
+          // エラーコード
+          if (googleError.code) {
+            messages.push(`Code: ${googleError.code}`);
+          }
+
+          // ステータス
+          if (googleError.status) {
+            messages.push(`Status: ${googleError.status}`);
+          }
+
+          // 個別のエラー詳細（最初の1-2個だけ）
+          if (googleError.errors && Array.isArray(googleError.errors)) {
+            const errorDetails = googleError.errors
+              .slice(0, 2)
+              .map((err) => {
+                const parts = [];
+                if (err.message) parts.push(err.message);
+                if (err.reason) parts.push(`Reason: ${err.reason}`);
+                if (err.domain) parts.push(`Domain: ${err.domain}`);
+                return parts.join(", ");
+              })
+              .filter(Boolean);
+            if (errorDetails.length > 0) {
+              messages.push(`Details: ${errorDetails.join("; ")}`);
+            }
+          }
+
+          if (messages.length > 0) {
+            return messages.join("\n");
+          }
+        }
+
+        // error.response.dataが文字列やオブジェクトの場合
+        if (typeof data === "string") {
+          return data.length > 500 ? data.substring(0, 500) + "..." : data;
+        }
+      }
+
+      // エラーオブジェクト自体にメッセージがある場合
+      if (error.message) {
+        return error.message.length > 500
+          ? error.message.substring(0, 500) + "..."
+          : error.message;
+      }
+    } catch (e) {
+      // パースエラーの場合は元のエラーを返す
+    }
+  }
+
+  // YouTube以外のエラー、またはフォールバック処理
+  if (typeof error === "object") {
+    // オブジェクトの場合は重要なキーだけを抽出
+    const importantKeys = ["message", "error", "code", "status", "statusCode"];
+    const extracted = {};
+
+    for (const key of importantKeys) {
+      if (error[key] !== undefined) {
+        extracted[key] = error[key];
+      }
+    }
+
+    // response.dataがある場合はそれも含める
+    if (error.response?.data) {
+      const data = error.response.data;
+      if (typeof data === "object" && !Array.isArray(data)) {
+        for (const key of importantKeys) {
+          if (data[key] !== undefined && extracted[key] === undefined) {
+            extracted[key] = data[key];
+          }
+        }
+      }
+    }
+
+    const jsonStr = JSON.stringify(extracted, null, 2);
+    return jsonStr.length > 500
+      ? jsonStr.substring(0, 500) + "\n... (truncated)"
+      : jsonStr;
+  }
+
+  // 文字列の場合
+  const str = String(error);
+  return str.length > 500 ? str.substring(0, 500) + "..." : str;
+}
+
 // ==== Slack通知（リッチ形式、フォールバック付き） ====
 async function sendSlackMessage(statuses) {
   if (!SLACK_WEBHOOK_URL) {
@@ -268,21 +372,13 @@ async function sendSlackMessage(statuses) {
           text: `*${platform.name}:* ❌ ERROR`,
         },
       });
-      // エラー詳細を追加
-      const errorText =
-        typeof platform.error === "object"
-          ? JSON.stringify(platform.error, null, 2)
-          : String(platform.error);
-      // エラーテキストが長すぎる場合は切り詰める（Slackの制限を考慮）
-      const truncatedError =
-        errorText.length > 2900
-          ? errorText.substring(0, 2900) + "\n... (truncated)"
-          : errorText;
+      // エラー詳細を追加（重要な情報だけを抽出）
+      const errorText = formatErrorForSlack(platform.error, platform.name);
       blocks.push({
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `\`\`\`${truncatedError}\`\`\``,
+          text: `\`\`\`${errorText}\`\`\``,
         },
       });
     } else {
@@ -313,6 +409,7 @@ async function sendSlackMessage(statuses) {
       }
     );
     console.log("[SLACK] Message sent successfully");
+    return; // 成功した場合はここで終了（フォールバックを実行しない）
   } catch (error) {
     console.error("[SLACK] Failed to send rich message:", error.message);
     // フォールバック: プレーンテキストで送信
@@ -323,10 +420,7 @@ async function sendSlackMessage(statuses) {
           .map((p) => {
             if (p.skip) return `${p.name}: SKIP`;
             if (p.error) {
-              const errorText =
-                typeof p.error === "object"
-                  ? JSON.stringify(p.error, null, 2)
-                  : String(p.error);
+              const errorText = formatErrorForSlack(p.error, p.name);
               return `${p.name}: ERROR\n\`\`\`${errorText}\`\`\``;
             }
             return `${p.name}: ${p.status ? "OK" : "NG"}`;
