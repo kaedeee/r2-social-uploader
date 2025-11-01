@@ -48,9 +48,16 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           YT_ACCOUNTS: ${{ secrets.YT_ACCOUNTS }}
 
+          # --- Facebook Pages: JSON array (optional) ---
+          FB_PAGES: ${{ secrets.FB_PAGES }}
+          ROB_FB_PAGE: ${{ secrets.ROB_FB_PAGE }}
+
           # --- IFTTT ---
           IFTTT_WEBHOOK_KEY: ${{ secrets.IFTTT_WEBHOOK_KEY }}
           IFTTT_EVENT_NAME: "r2_to_threads"
+
+          # --- Slack notification (optional) ---
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
           # --- options ---
           POST_WINDOW_JST: "10-23"

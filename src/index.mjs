@@ -202,34 +202,8 @@ function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// ==== Slack通知 ====
-async function sendSlackMessage(message) {
-  if (!SLACK_WEBHOOK_URL) {
-    console.log("[SLACK] Webhook URL not configured, skipping notification");
-    return;
-  }
-
-  try {
-    await axios.post(
-      SLACK_WEBHOOK_URL,
-      {
-        text: message,
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-        timeout: 10000,
-      }
-    );
-    console.log("[SLACK] Message sent successfully");
-  } catch (error) {
-    console.error("[SLACK] Failed to send message:", error.message);
-  }
-}
-
-// ==== Slackリッチメッセージ送信 ====
-async function sendSlackRichMessage(statuses) {
+// ==== Slack通知（リッチ形式、フォールバック付き） ====
+async function sendSlackMessage(statuses) {
   if (!SLACK_WEBHOOK_URL) {
     console.log("[SLACK] Webhook URL not configured, skipping notification");
     return;
@@ -338,26 +312,45 @@ async function sendSlackRichMessage(statuses) {
         timeout: 10000,
       }
     );
-    console.log("[SLACK] Rich message sent successfully");
+    console.log("[SLACK] Message sent successfully");
   } catch (error) {
     console.error("[SLACK] Failed to send rich message:", error.message);
     // フォールバック: プレーンテキストで送信
-    const fallbackMessage =
-      `Video: ${statuses.videoKey}\n` +
-      platformStatuses
-        .map((p) => {
-          if (p.skip) return `${p.name}: SKIP`;
-          if (p.error) {
-            const errorText =
-              typeof p.error === "object"
-                ? JSON.stringify(p.error, null, 2)
-                : String(p.error);
-            return `${p.name}: ERROR\n\`\`\`${errorText}\`\`\``;
-          }
-          return `${p.name}: ${p.status ? "OK" : "NG"}`;
-        })
-        .join("\n");
-    await sendSlackMessage(fallbackMessage);
+    try {
+      const fallbackMessage =
+        `Video: ${statuses.videoKey}\n` +
+        platformStatuses
+          .map((p) => {
+            if (p.skip) return `${p.name}: SKIP`;
+            if (p.error) {
+              const errorText =
+                typeof p.error === "object"
+                  ? JSON.stringify(p.error, null, 2)
+                  : String(p.error);
+              return `${p.name}: ERROR\n\`\`\`${errorText}\`\`\``;
+            }
+            return `${p.name}: ${p.status ? "OK" : "NG"}`;
+          })
+          .join("\n");
+      await axios.post(
+        SLACK_WEBHOOK_URL,
+        {
+          text: fallbackMessage,
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      console.log("[SLACK] Fallback message sent successfully");
+    } catch (fallbackError) {
+      console.error(
+        "[SLACK] Failed to send fallback message:",
+        fallbackError.message
+      );
+    }
   }
 }
 
@@ -528,8 +521,8 @@ async function main() {
     }
   }
 
-  // ===== ステータスをSlackに送信（リッチ形式） =====
-  await sendSlackRichMessage({
+  // ===== ステータスをSlackに送信 =====
+  await sendSlackMessage({
     videoKey: key,
     ig: igOk,
     igError: igError,
