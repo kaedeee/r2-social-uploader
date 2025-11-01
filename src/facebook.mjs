@@ -82,6 +82,10 @@ export async function postFacebookReel({
       console.log(
         `FB: Video status: ${videoStatus}, Processing: ${processingPhase?.status}`
       );
+      console.log(
+        `FB: Processing phase details:`,
+        JSON.stringify(processingPhase, null, 2)
+      );
 
       if (processingPhase?.error) {
         throw new Error(
