@@ -28,6 +28,8 @@ const {
   IFTTT_WEBHOOK_KEY,
   IFTTT_EVENT_NAME = "r2_to_threads",
 
+  SLACK_WEBHOOK_URL, // Slack通知用のWebhook URL（オプショナル）
+
   POST_WINDOW_JST = "10-18",
   YT_DAILY_LIMIT = "6",
   DRY_RUN,
@@ -200,6 +202,165 @@ function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+// ==== Slack通知 ====
+async function sendSlackMessage(message) {
+  if (!SLACK_WEBHOOK_URL) {
+    console.log("[SLACK] Webhook URL not configured, skipping notification");
+    return;
+  }
+
+  try {
+    await axios.post(
+      SLACK_WEBHOOK_URL,
+      {
+        text: message,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    );
+    console.log("[SLACK] Message sent successfully");
+  } catch (error) {
+    console.error("[SLACK] Failed to send message:", error.message);
+  }
+}
+
+// ==== Slackリッチメッセージ送信 ====
+async function sendSlackRichMessage(statuses) {
+  if (!SLACK_WEBHOOK_URL) {
+    console.log("[SLACK] Webhook URL not configured, skipping notification");
+    return;
+  }
+
+  const blocks = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `📹 Video Upload Status: ${statuses.videoKey}`,
+        emoji: true,
+      },
+    },
+    {
+      type: "divider",
+    },
+  ];
+
+  // 各プラットフォームのステータスを追加
+  const platformStatuses = [
+    {
+      name: "Instagram",
+      status: statuses.ig,
+      error: statuses.igError,
+      skip: statuses.skipInstagram,
+    },
+    {
+      name: "IFTTT",
+      status: statuses.ifttt,
+      error: statuses.iftttError,
+      skip: false,
+    },
+    {
+      name: "Facebook",
+      status: statuses.fb,
+      error: statuses.fbError,
+      skip: statuses.skipFacebook,
+    },
+    {
+      name: "YouTube",
+      status: statuses.yt,
+      error: statuses.ytError,
+      skip: statuses.skipYouTube,
+    },
+  ];
+
+  for (const platform of platformStatuses) {
+    if (platform.skip) {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*${platform.name}:* ⏭️ SKIP`,
+        },
+      });
+    } else if (platform.error) {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*${platform.name}:* ❌ ERROR`,
+        },
+      });
+      // エラー詳細を追加
+      const errorText =
+        typeof platform.error === "object"
+          ? JSON.stringify(platform.error, null, 2)
+          : String(platform.error);
+      // エラーテキストが長すぎる場合は切り詰める（Slackの制限を考慮）
+      const truncatedError =
+        errorText.length > 2900
+          ? errorText.substring(0, 2900) + "\n... (truncated)"
+          : errorText;
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `\`\`\`${truncatedError}\`\`\``,
+        },
+      });
+    } else {
+      const emoji = platform.status ? "✅" : "❌";
+      const status = platform.status ? "OK" : "NG";
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*${platform.name}:* ${emoji} ${status}`,
+        },
+      });
+    }
+  }
+
+  try {
+    await axios.post(
+      SLACK_WEBHOOK_URL,
+      {
+        blocks: blocks,
+        text: `Video Upload Status: ${statuses.videoKey}`, // フォールバック用テキスト
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    );
+    console.log("[SLACK] Rich message sent successfully");
+  } catch (error) {
+    console.error("[SLACK] Failed to send rich message:", error.message);
+    // フォールバック: プレーンテキストで送信
+    const fallbackMessage =
+      `Video: ${statuses.videoKey}\n` +
+      platformStatuses
+        .map((p) => {
+          if (p.skip) return `${p.name}: SKIP`;
+          if (p.error) {
+            const errorText =
+              typeof p.error === "object"
+                ? JSON.stringify(p.error, null, 2)
+                : String(p.error);
+            return `${p.name}: ERROR\n\`\`\`${errorText}\`\`\``;
+          }
+          return `${p.name}: ${p.status ? "OK" : "NG"}`;
+        })
+        .join("\n");
+    await sendSlackMessage(fallbackMessage);
+  }
+}
+
 // ==== メイン ====
 async function main() {
   console.log(`[start] ${new Date().toISOString()}`);
@@ -254,6 +415,7 @@ async function main() {
 
   // ===== IFTTT =====
   let iftttOk = false;
+  let iftttError = null;
   try {
     if (DRY_RUN === "1") {
       console.log("[IFTTT] DRY_RUN → skip");
@@ -270,11 +432,13 @@ async function main() {
       console.log(`[IFTTT] ${iftttOk ? "OK" : "NG"}`);
     }
   } catch (e) {
-    console.error("[IFTTT] error", e?.response?.data || e);
+    iftttError = e?.response?.data || e;
+    console.error("[IFTTT] error", iftttError);
   }
 
   // ===== YouTube =====
   let ytOk = false;
+  let ytError = null;
   if (skipYouTube) {
     console.log("[YT] SKIP → skipped due to YT_SK prefix");
     ytOk = true; // スキップは成功として扱う
@@ -300,12 +464,15 @@ async function main() {
         );
       }
     } catch (e) {
-      console.error("[YT] error", e?.response?.data || e);
+      ytError = e;
+      const errorData = e?.response?.data || e;
+      console.error("[YT] error", errorData);
     }
   }
 
   // ===== Instagram =====
   let igOk = false;
+  let igError = null;
   if (skipInstagram) {
     console.log("[IG] SKIP → skipped due to YT_IG_SK prefix");
     igOk = true; // スキップは成功として扱う
@@ -325,12 +492,15 @@ async function main() {
         console.log(`[IG] ${igOk ? "OK" : "NG"} id=${igRes.id || "-"}`);
       }
     } catch (e) {
-      console.error("[IG] error", e?.response?.data || e);
+      igError = e?.response?.data || e;
+      console.error("[IG] error", igError);
     }
   }
 
   // ===== Facebook Pages =====
   let fbOk = false;
+  let fbError = null;
+  const skipFacebook = skipInstagram || !fbAcc;
   if (skipInstagram) {
     console.log("[FB] SKIP → skipped due to YT_IG_SK prefix");
     fbOk = true; // スキップは成功として扱う
@@ -353,11 +523,31 @@ async function main() {
         console.log(`[FB] ${fbOk ? "OK" : "NG"} id=${fbRes.id || "-"}`);
       }
     } catch (e) {
-      console.error("[FB] error", e?.response?.data || e);
+      fbError = e?.response?.data || e;
+      console.error("[FB] error", fbError);
     }
   }
 
+  // ===== ステータスをSlackに送信（リッチ形式） =====
+  await sendSlackRichMessage({
+    videoKey: key,
+    ig: igOk,
+    igError: igError,
+    skipInstagram: skipInstagram,
+    ifttt: iftttOk,
+    iftttError: iftttError,
+    fb: fbOk,
+    fbError: fbError,
+    skipFacebook: skipFacebook,
+    yt: ytOk,
+    ytError: ytError,
+    skipYouTube: skipYouTube,
+  });
+
   // ===== 必要な投稿が全て完了したら30秒後に削除 =====
+  // YouTubeエラーが発生しても削除を続行する（ytErrorがある場合は成功とみなす）
+  const shouldDeleteDespiteYTError = ytError !== null && !skipYouTube;
+
   let allRequiredPostsCompleted = false;
 
   if (skipInstagram) {
@@ -379,16 +569,30 @@ async function main() {
     }
   } else {
     // 通常: Instagram + Facebook + YouTube + IFTTT 実行
-    if (FB_LIST.length > 0) {
-      allRequiredPostsCompleted = igOk && fbOk && ytOk && iftttOk;
+    // YouTubeエラーが発生した場合は削除を続行
+    if (shouldDeleteDespiteYTError) {
+      // YouTubeエラーがあっても他の投稿が成功していれば削除
+      if (FB_LIST.length > 0) {
+        allRequiredPostsCompleted = igOk && fbOk && iftttOk;
+      } else {
+        allRequiredPostsCompleted = igOk && iftttOk;
+      }
     } else {
-      allRequiredPostsCompleted = igOk && ytOk && iftttOk;
+      // 通常の判定
+      if (FB_LIST.length > 0) {
+        allRequiredPostsCompleted = igOk && fbOk && ytOk && iftttOk;
+      } else {
+        allRequiredPostsCompleted = igOk && ytOk && iftttOk;
+      }
     }
   }
 
   if (allRequiredPostsCompleted) {
+    const reason = shouldDeleteDespiteYTError
+      ? "All required posts completed (YT error occurred but proceeding with deletion)"
+      : "All required posts completed";
     console.log(
-      `[DELETE] All required posts completed. Video deletion scheduled for 30 seconds: ${key}`
+      `[DELETE] ${reason}. Video deletion scheduled for 30 seconds: ${key}`
     );
     setTimeout(() => {
       deleteVideo(key, "delayed");
