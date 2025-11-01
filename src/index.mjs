@@ -251,29 +251,47 @@ async function sendSlackMessage(statuses) {
     return;
   }
 
+  // ファイル名を短く表示（長い場合は末尾を省略）
+  const fileName = statuses.videoKey.split("/").pop() || statuses.videoKey;
+  const displayName =
+    fileName.length > 50 ? fileName.substring(0, 47) + "..." : fileName;
+
   const blocks = [
     {
       type: "header",
       text: {
         type: "plain_text",
-        text: `📹 Video Upload Status: ${statuses.videoKey}`,
+        text: `🎬 動画アップロード結果`,
         emoji: true,
       },
     },
     {
-      type: "divider",
-    },
-    {
       type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*Action:* ${
-          statuses.willDelete ? "🗑️ DELETE (30s delay)" : "💾 KEEP"
-        }`,
-      },
+      fields: [
+        {
+          type: "mrkdwn",
+          text: `*📁 ファイル名*\n\`${displayName}\``,
+        },
+        {
+          type: "mrkdwn",
+          text: `*⚡ アクション*\n${
+            statuses.willDelete
+              ? "🗑️ *削除予定* (30秒後に実行)"
+              : "💾 *保持* (アップロード失敗のため保持)"
+          }`,
+        },
+      ],
     },
     {
       type: "divider",
+    },
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `📊 プラットフォーム別ステータス`,
+        emoji: true,
+      },
     },
   ];
 
@@ -281,24 +299,28 @@ async function sendSlackMessage(statuses) {
   const platformStatuses = [
     {
       name: "Instagram",
+      icon: "📸",
       status: statuses.ig,
       error: statuses.igError,
       skip: statuses.skipInstagram,
     },
     {
-      name: "IFTTT",
+      name: "IFTTT (Threads)",
+      icon: "🧵",
       status: statuses.ifttt,
       error: statuses.iftttError,
       skip: false,
     },
     {
       name: "Facebook",
+      icon: "👥",
       status: statuses.fb,
       error: statuses.fbError,
       skip: statuses.skipFacebook,
     },
     {
       name: "YouTube",
+      icon: "▶️",
       status: statuses.yt,
       error: statuses.ytError,
       skip: statuses.skipYouTube,
@@ -311,7 +333,7 @@ async function sendSlackMessage(statuses) {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `*${platform.name}:* ⏭️ SKIP`,
+          text: `${platform.icon} *${platform.name}*\n⏭️ スキップされました`,
         },
       });
     } else if (platform.error) {
@@ -319,7 +341,7 @@ async function sendSlackMessage(statuses) {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `*${platform.name}:* ❌ ERROR`,
+          text: `${platform.icon} *${platform.name}*\n❌ *エラー*`,
         },
       });
       // エラー詳細を追加（重要な情報だけを抽出）
@@ -328,18 +350,24 @@ async function sendSlackMessage(statuses) {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `\`\`\`${errorText}\`\`\``,
+          text: `\`\`\`\n${errorText}\n\`\`\``,
         },
       });
     } else {
       const emoji = platform.status ? "✅" : "❌";
-      const status = platform.status ? "OK" : "NG";
+      const statusText = platform.status ? "*成功*" : "*失敗*";
       blocks.push({
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `*${platform.name}:* ${emoji} ${status}`,
+          text: `${platform.icon} *${platform.name}*\n${emoji} ${statusText}`,
         },
+      });
+    }
+    // プラットフォーム間の区切りを追加
+    if (platform !== platformStatuses[platformStatuses.length - 1]) {
+      blocks.push({
+        type: "divider",
       });
     }
   }
@@ -349,8 +377,8 @@ async function sendSlackMessage(statuses) {
       SLACK_WEBHOOK_URL,
       {
         blocks: blocks,
-        text: `Video Upload Status: ${statuses.videoKey} - ${
-          statuses.willDelete ? "DELETE" : "KEEP"
+        text: `🎬 動画アップロード結果: ${displayName} - ${
+          statuses.willDelete ? "削除予定" : "保持"
         }`, // フォールバック用テキスト
       },
       {
@@ -367,16 +395,21 @@ async function sendSlackMessage(statuses) {
     // フォールバック: プレーンテキストで送信
     try {
       const fallbackMessage =
-        `Video: ${statuses.videoKey}\n` +
-        `Action: ${statuses.willDelete ? "DELETE (30s delay)" : "KEEP"}\n` +
+        `🎬 動画アップロード結果\n` +
+        `📁 ファイル名: ${displayName}\n` +
+        `⚡ アクション: ${
+          statuses.willDelete ? "🗑️ 削除予定 (30秒後に実行)" : "💾 保持"
+        }\n\n` +
+        `📊 プラットフォーム別ステータス:\n` +
         platformStatuses
           .map((p) => {
-            if (p.skip) return `${p.name}: SKIP`;
+            if (p.skip) return `${p.icon} ${p.name}: ⏭️ スキップ`;
             if (p.error) {
               const errorText = formatErrorForSlack(p.error, p.name);
-              return `${p.name}: ERROR\n\`\`\`${errorText}\`\`\``;
+              return `${p.icon} ${p.name}: ❌ エラー\n\`\`\`${errorText}\`\`\``;
             }
-            return `${p.name}: ${p.status ? "OK" : "NG"}`;
+            const status = p.status ? "✅ 成功" : "❌ 失敗";
+            return `${p.icon} ${p.name}: ${status}`;
           })
           .join("\n");
       await axios.post(
@@ -556,11 +589,13 @@ async function main() {
         console.log("[FB] DRY_RUN → skip");
         fbOk = true;
       } else {
+        // Facebook用のテキスト: #の手前まで
+        const fbCaption = caption.split("#")[0].trim();
         const fbRes = await postFacebookReel({
           pageId: fbAcc.pageId,
           accessToken: fbAcc.accessToken,
           videoUrl: url,
-          caption,
+          caption: fbCaption,
         });
         fbOk = fbRes.ok;
         console.log(`[FB] ${fbOk ? "OK" : "NG"} id=${fbRes.id || "-"}`);
