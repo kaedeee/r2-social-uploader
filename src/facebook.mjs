@@ -30,34 +30,38 @@ export async function postFacebookReel({
 
     console.log(`FB: Video ID obtained: ${videoId}`);
 
-    // Step 2: Upload video using file_url with transfer phase
-    // Use upload_phase: "transfer" to upload the video via file_url
-    const transferResponse = await axios.post(
-      `https://graph.facebook.com/${apiVersion}/${pageId}/video_reels`,
+    // Step 2: Upload video using file_url
+    // According to docs: https://developers.facebook.com/docs/video-api/guides/reels-publishing/
+    // For hosted files, use rupload.facebook.com with file_url header
+    const uploadResponse = await axios.post(
+      `https://rupload.facebook.com/video-upload/${apiVersion}/${videoId}`,
       null,
       {
-        params: {
-          access_token: accessToken,
-          upload_phase: "transfer",
+        headers: {
+          Authorization: `OAuth ${accessToken}`,
           file_url: videoUrl,
         },
         timeout: 120000, // 2 minutes for upload
       }
     );
 
-    if (!transferResponse.data.success) {
-      throw new Error("Failed to transfer video");
+    if (!uploadResponse.data.success) {
+      throw new Error("Failed to upload video");
     }
 
-    console.log(`FB: Video transfer initiated successfully`);
+    console.log(`FB: Video uploaded successfully`);
 
-    // Step 3: Wait for processing to complete
-    let processingComplete = false;
+    // Step 3: Wait for processing to complete (similar to instagram.mjs)
+    let videoStatus = "processing";
     const start = Date.now();
     const maxWaitTime = 10 * 60 * 1000; // 10 minutes max wait
 
-    while (!processingComplete && Date.now() - start < maxWaitTime) {
-      await new Promise((r) => setTimeout(r, 5000)); // Check every 5 seconds
+    while (
+      videoStatus === "processing" ||
+      videoStatus === "uploading" ||
+      videoStatus === "upload_complete"
+    ) {
+      await new Promise((r) => setTimeout(r, 2000)); // Check every 2 seconds
 
       const statusResponse = await axios.get(
         `https://graph.facebook.com/${apiVersion}/${videoId}`,
@@ -71,7 +75,7 @@ export async function postFacebookReel({
       );
 
       const status = statusResponse.data.status;
-      const videoStatus = status?.video_status;
+      videoStatus = status?.video_status || videoStatus;
       const processingPhase = status?.processing_phase;
 
       console.log(
@@ -86,29 +90,17 @@ export async function postFacebookReel({
         );
       }
 
-      // Check if processing has started (not_started -> in_progress -> complete)
-      const processingStatus = processingPhase?.status;
-
-      // If processing hasn't started yet after upload_complete, wait a bit more
-      if (
-        videoStatus === "upload_complete" &&
-        processingStatus === "not_started"
-      ) {
-        console.log(
-          `FB: Upload complete but processing not started yet, waiting...`
-        );
+      if (videoStatus === "failed") {
+        throw new Error("FB: Video processing failed");
       }
 
-      // Processing is complete when status is ready or processing phase is complete
-      if (videoStatus === "ready" || processingStatus === "complete") {
-        processingComplete = true;
-      } else if (videoStatus === "failed") {
-        throw new Error("FB: Video processing failed");
+      if (Date.now() - start > maxWaitTime) {
+        throw new Error("FB: Timeout waiting for video processing");
       }
     }
 
-    if (!processingComplete) {
-      throw new Error("FB: Timeout waiting for video processing");
+    if (videoStatus !== "ready") {
+      throw new Error(`FB: Unexpected video status: ${videoStatus}`);
     }
 
     const processingTime = Math.round((Date.now() - start) / 1000);
