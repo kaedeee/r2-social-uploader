@@ -540,11 +540,8 @@ async function main() {
   // ===== Facebook Pages =====
   let fbOk = false;
   let fbError = null;
-  //   const skipFacebook = skipInstagram || !fbAcc;
-  // if (skipInstagram) {
-  // TODO: 一時的にFacebookをスキップ（不具合調査中）
-  const skipFacebook = true; // skipInstagram || !fbAcc;
-  if (true) {
+  const skipFacebook = skipInstagram || !fbAcc;
+  if (skipInstagram) {
     console.log("[FB] SKIP → temporarily skipped (bug investigation)");
     fbOk = true; // スキップは成功として扱う
   } else if (skipInstagram) {
