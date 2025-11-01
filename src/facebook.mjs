@@ -24,26 +24,27 @@ export async function postFacebookReel({
     );
 
     const videoId = initResponse.data.video_id;
+    const uploadUrl = initResponse.data.upload_url;
     if (!videoId) {
       throw new Error("Failed to get video_id from initialization");
     }
+    if (!uploadUrl) {
+      throw new Error("Failed to get upload_url from initialization");
+    }
 
     console.log(`FB: Video ID obtained: ${videoId}`);
+    console.log(`FB: Upload URL obtained: ${uploadUrl}`);
 
     // Step 2: Upload video using file_url
     // According to docs: https://developers.facebook.com/docs/video-api/guides/reels-publishing/
-    // For hosted files, use rupload.facebook.com with file_url header
-    const uploadResponse = await axios.post(
-      `https://rupload.facebook.com/video-upload/${apiVersion}/${videoId}`,
-      null,
-      {
-        headers: {
-          Authorization: `OAuth ${accessToken}`,
-          file_url: videoUrl,
-        },
-        timeout: 120000, // 2 minutes for upload
-      }
-    );
+    // For hosted files, use the upload_url from Step 1 with file_url header
+    const uploadResponse = await axios.post(uploadUrl, null, {
+      headers: {
+        Authorization: `OAuth ${accessToken}`,
+        file_url: videoUrl,
+      },
+      timeout: 120000, // 2 minutes for upload
+    });
 
     if (!uploadResponse.data.success) {
       throw new Error("Failed to upload video");
