@@ -493,8 +493,14 @@ async function main() {
   // ===== Facebook Pages =====
   let fbOk = false;
   let fbError = null;
-  const skipFacebook = skipInstagram || !fbAcc;
-  if (skipInstagram) {
+  //   const skipFacebook = skipInstagram || !fbAcc;
+  // if (skipInstagram) {
+  // TODO: 一時的にFacebookをスキップ（不具合調査中）
+  const skipFacebook = true; // skipInstagram || !fbAcc;
+  if (true) {
+    console.log("[FB] SKIP → temporarily skipped (bug investigation)");
+    fbOk = true; // スキップは成功として扱う
+  } else if (skipInstagram) {
     console.log("[FB] SKIP → skipped due to YT_IG_SK prefix");
     fbOk = true; // スキップは成功として扱う
   } else if (!fbAcc) {
