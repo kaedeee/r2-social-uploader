@@ -30,25 +30,26 @@ export async function postFacebookReel({
 
     console.log(`FB: Video ID obtained: ${videoId}`);
 
-    // Step 2: Upload video using file_url
-    // Note: file_url can be passed as a header (rupload API accepts custom headers)
-    const uploadResponse = await axios.post(
-      `https://rupload.facebook.com/video-upload/${apiVersion}/${videoId}`,
+    // Step 2: Upload video using file_url with transfer phase
+    // Use upload_phase: "transfer" to upload the video via file_url
+    const transferResponse = await axios.post(
+      `https://graph.facebook.com/${apiVersion}/${pageId}/video_reels`,
       null,
       {
-        headers: {
-          Authorization: `OAuth ${accessToken}`,
-          "file_url": videoUrl,
+        params: {
+          access_token: accessToken,
+          upload_phase: "transfer",
+          file_url: videoUrl,
         },
         timeout: 120000, // 2 minutes for upload
       }
     );
 
-    if (!uploadResponse.data.success) {
-      throw new Error("Failed to upload video");
+    if (!transferResponse.data.success) {
+      throw new Error("Failed to transfer video");
     }
 
-    console.log(`FB: Video uploaded successfully`);
+    console.log(`FB: Video transfer initiated successfully`);
 
     // Step 3: Wait for processing to complete
     let processingComplete = false;
@@ -79,11 +80,27 @@ export async function postFacebookReel({
 
       if (processingPhase?.error) {
         throw new Error(
-          `FB: Processing error: ${processingPhase.error.message || "Unknown error"}`
+          `FB: Processing error: ${
+            processingPhase.error.message || "Unknown error"
+          }`
         );
       }
 
-      if (videoStatus === "ready" || processingPhase?.status === "complete") {
+      // Check if processing has started (not_started -> in_progress -> complete)
+      const processingStatus = processingPhase?.status;
+
+      // If processing hasn't started yet after upload_complete, wait a bit more
+      if (
+        videoStatus === "upload_complete" &&
+        processingStatus === "not_started"
+      ) {
+        console.log(
+          `FB: Upload complete but processing not started yet, waiting...`
+        );
+      }
+
+      // Processing is complete when status is ready or processing phase is complete
+      if (videoStatus === "ready" || processingStatus === "complete") {
         processingComplete = true;
       } else if (videoStatus === "failed") {
         throw new Error("FB: Video processing failed");
@@ -95,9 +112,7 @@ export async function postFacebookReel({
     }
 
     const processingTime = Math.round((Date.now() - start) / 1000);
-    console.log(
-      `FB: Video processing completed in ${processingTime} seconds`
-    );
+    console.log(`FB: Video processing completed in ${processingTime} seconds`);
 
     // Step 4: Publish the reel
     const publishResponse = await axios.post(
@@ -115,7 +130,8 @@ export async function postFacebookReel({
       }
     );
 
-    const publishedVideoId = publishResponse.data.id || publishResponse.data.video_id;
+    const publishedVideoId =
+      publishResponse.data.id || publishResponse.data.video_id;
     if (!publishedVideoId) {
       throw new Error("Failed to publish reel");
     }
@@ -125,7 +141,10 @@ export async function postFacebookReel({
     console.error("FB: Error details:", error?.response?.data || error.message);
     return {
       ok: false,
-      error: error?.response?.data?.error?.message || error.message || "Unknown error",
+      error:
+        error?.response?.data?.error?.message ||
+        error.message ||
+        "Unknown error",
     };
   }
 }
