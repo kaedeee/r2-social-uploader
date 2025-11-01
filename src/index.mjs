@@ -263,6 +263,18 @@ async function sendSlackMessage(statuses) {
     {
       type: "divider",
     },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Action:* ${
+          statuses.willDelete ? "🗑️ DELETE (30s delay)" : "💾 KEEP"
+        }`,
+      },
+    },
+    {
+      type: "divider",
+    },
   ];
 
   // 各プラットフォームのステータスを追加
@@ -337,7 +349,9 @@ async function sendSlackMessage(statuses) {
       SLACK_WEBHOOK_URL,
       {
         blocks: blocks,
-        text: `Video Upload Status: ${statuses.videoKey}`, // フォールバック用テキスト
+        text: `Video Upload Status: ${statuses.videoKey} - ${
+          statuses.willDelete ? "DELETE" : "KEEP"
+        }`, // フォールバック用テキスト
       },
       {
         headers: {
@@ -354,6 +368,7 @@ async function sendSlackMessage(statuses) {
     try {
       const fallbackMessage =
         `Video: ${statuses.videoKey}\n` +
+        `Action: ${statuses.willDelete ? "DELETE (30s delay)" : "KEEP"}\n` +
         platformStatuses
           .map((p) => {
             if (p.skip) return `${p.name}: SKIP`;
@@ -559,6 +574,16 @@ async function main() {
     }
   }
 
+  // ===== どれか一つでも成功したら削除 =====
+  // スキップされていないプラットフォームの成功状態を確認
+  const anySuccess =
+    (!skipInstagram && igOk) ||
+    (!skipFacebook && fbOk) ||
+    (!skipYouTube && ytOk) ||
+    iftttOk;
+
+  const willDelete = anySuccess;
+
   // ===== ステータスをSlackに送信 =====
   await sendSlackMessage({
     videoKey: key,
@@ -573,57 +598,12 @@ async function main() {
     yt: ytOk,
     ytError: ytError,
     skipYouTube: skipYouTube,
+    willDelete: willDelete,
   });
 
-  // ===== 必要な投稿が全て完了したら30秒後に削除 =====
-  // YouTubeエラーが発生しても削除を続行する（ytErrorがある場合は成功とみなす）
-  const shouldDeleteDespiteYTError = ytError !== null && !skipYouTube;
-
-  let allRequiredPostsCompleted = false;
-
-  if (skipInstagram) {
-    // YT_IG_SK: IFTTT のみ実行（Facebookもスキップ）
-    allRequiredPostsCompleted = iftttOk;
-  } else if (isRob) {
-    // ROB: Instagram (ROB_IG) + Facebook (ROB_FB) + IFTTT 実行
-    if (ROB_FB) {
-      allRequiredPostsCompleted = igOk && fbOk && iftttOk;
-    } else {
-      allRequiredPostsCompleted = igOk && iftttOk;
-    }
-  } else if (skipYouTube) {
-    // YT_SK: Instagram + Facebook + IFTTT 実行
-    if (FB_LIST.length > 0) {
-      allRequiredPostsCompleted = igOk && fbOk && iftttOk;
-    } else {
-      allRequiredPostsCompleted = igOk && iftttOk;
-    }
-  } else {
-    // 通常: Instagram + Facebook + YouTube + IFTTT 実行
-    // YouTubeエラーが発生した場合は削除を続行
-    if (shouldDeleteDespiteYTError) {
-      // YouTubeエラーがあっても他の投稿が成功していれば削除
-      if (FB_LIST.length > 0) {
-        allRequiredPostsCompleted = igOk && fbOk && iftttOk;
-      } else {
-        allRequiredPostsCompleted = igOk && iftttOk;
-      }
-    } else {
-      // 通常の判定
-      if (FB_LIST.length > 0) {
-        allRequiredPostsCompleted = igOk && fbOk && ytOk && iftttOk;
-      } else {
-        allRequiredPostsCompleted = igOk && ytOk && iftttOk;
-      }
-    }
-  }
-
-  if (allRequiredPostsCompleted) {
-    const reason = shouldDeleteDespiteYTError
-      ? "All required posts completed (YT error occurred but proceeding with deletion)"
-      : "All required posts completed";
+  if (willDelete) {
     console.log(
-      `[DELETE] ${reason}. Video deletion scheduled for 30 seconds: ${key}`
+      `[DELETE] At least one post succeeded. Video deletion scheduled for 30 seconds: ${key}`
     );
     setTimeout(() => {
       deleteVideo(key, "delayed");
