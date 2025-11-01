@@ -7,6 +7,7 @@ import axios from "axios";
 import { postInstagram } from "./instagram.mjs";
 import { uploadYouTube } from "./youtube.mjs";
 import { postIFTTT } from "./ifttt.mjs";
+import { postFacebookReel } from "./facebook.mjs";
 
 // ==== 環境変数 ====
 const {
@@ -21,6 +22,8 @@ const {
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
   YT_ACCOUNTS, // ★ JSON配列
+  FB_PAGES, // ★ JSON配列 [{ pageId, accessToken }, ...]
+  ROB_FB_PAGE, // ★ ROB用のFacebook Page
 
   IFTTT_WEBHOOK_KEY,
   IFTTT_EVENT_NAME = "r2_to_threads",
@@ -53,6 +56,8 @@ if (!IFTTT_WEBHOOK_KEY) {
 const IG_LIST = JSON.parse(IG_ACCOUNTS); // [{ userId, accessToken }, ...]
 const ROB_IG = JSON.parse(ROB_IG_ACCOUNT); // { userId, accessToken }
 const YT_LIST = JSON.parse(YT_ACCOUNTS); // [{ refreshToken }, ...]
+const FB_LIST = FB_PAGES ? JSON.parse(FB_PAGES) : []; // [{ pageId, accessToken }, ...]
+const ROB_FB = ROB_FB_PAGE ? JSON.parse(ROB_FB_PAGE) : null; // { pageId, accessToken }
 
 const s3 = new S3Client({
   region: "auto",
@@ -229,14 +234,23 @@ async function main() {
     );
   if (skipInstagram) {
     console.log(`[SKIP] Instagram upload skipped due to YT_IG_SK prefix`);
+    console.log(`[SKIP] Facebook upload skipped due to YT_IG_SK prefix`);
   }
   if (isRob) {
     console.log(`[ROB] Using ROB Instagram account and IFTTT type: rob`);
+    if (ROB_FB) {
+      console.log(`[ROB] Using ROB Facebook Page`);
+    }
   }
 
   // ランダムにアカウントを選択
   const igAcc = isRob ? ROB_IG : pickRandom(IG_LIST);
   const ytAcc = pickRandom(YT_LIST);
+  const fbAcc = isRob
+    ? ROB_FB
+    : FB_LIST.length > 0
+    ? pickRandom(FB_LIST)
+    : null;
 
   // ===== IFTTT =====
   let iftttOk = false;
@@ -315,21 +329,61 @@ async function main() {
     }
   }
 
+  // ===== Facebook Pages =====
+  let fbOk = false;
+  if (skipInstagram) {
+    console.log("[FB] SKIP → skipped due to YT_IG_SK prefix");
+    fbOk = true; // スキップは成功として扱う
+  } else if (!fbAcc) {
+    console.log("[FB] SKIP → no Facebook Pages configured");
+    fbOk = true; // 未設定は成功として扱う
+  } else {
+    try {
+      if (DRY_RUN === "1") {
+        console.log("[FB] DRY_RUN → skip");
+        fbOk = true;
+      } else {
+        const fbRes = await postFacebookReel({
+          pageId: fbAcc.pageId,
+          accessToken: fbAcc.accessToken,
+          videoUrl: url,
+          caption,
+        });
+        fbOk = fbRes.ok;
+        console.log(`[FB] ${fbOk ? "OK" : "NG"} id=${fbRes.id || "-"}`);
+      }
+    } catch (e) {
+      console.error("[FB] error", e?.response?.data || e);
+    }
+  }
+
   // ===== 必要な投稿が全て完了したら30秒後に削除 =====
   let allRequiredPostsCompleted = false;
 
   if (skipInstagram) {
-    // YT_IG_SK: IFTTT のみ実行
+    // YT_IG_SK: IFTTT のみ実行（Facebookもスキップ）
     allRequiredPostsCompleted = iftttOk;
   } else if (isRob) {
-    // ROB: Instagram (ROB_IG) + IFTTT 実行
-    allRequiredPostsCompleted = igOk && iftttOk;
+    // ROB: Instagram (ROB_IG) + Facebook (ROB_FB) + IFTTT 実行
+    if (ROB_FB) {
+      allRequiredPostsCompleted = igOk && fbOk && iftttOk;
+    } else {
+      allRequiredPostsCompleted = igOk && iftttOk;
+    }
   } else if (skipYouTube) {
-    // YT_SK: Instagram + IFTTT 実行
-    allRequiredPostsCompleted = igOk && iftttOk;
+    // YT_SK: Instagram + Facebook + IFTTT 実行
+    if (FB_LIST.length > 0) {
+      allRequiredPostsCompleted = igOk && fbOk && iftttOk;
+    } else {
+      allRequiredPostsCompleted = igOk && iftttOk;
+    }
   } else {
-    // 通常: Instagram + YouTube + IFTTT 実行
-    allRequiredPostsCompleted = igOk && ytOk && iftttOk;
+    // 通常: Instagram + Facebook + YouTube + IFTTT 実行
+    if (FB_LIST.length > 0) {
+      allRequiredPostsCompleted = igOk && fbOk && ytOk && iftttOk;
+    } else {
+      allRequiredPostsCompleted = igOk && ytOk && iftttOk;
+    }
   }
 
   if (allRequiredPostsCompleted) {
@@ -341,7 +395,7 @@ async function main() {
     }, 30000); // 30秒 = 30000ms
   } else {
     console.log(
-      `[KEEP] kept: ${key} (IG:${igOk} / YT:${ytOk} / IFTTT:${iftttOk})`
+      `[KEEP] kept: ${key} (IG:${igOk} / FB:${fbOk} / YT:${ytOk} / IFTTT:${iftttOk})`
     );
   }
 }

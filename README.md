@@ -1,8 +1,8 @@
 ---
-# R2 → Instagram / YouTube / IFTTT Auto Poster
+# R2 → Instagram / YouTube / Facebook / IFTTT Auto Poster
 
-Cloudflare R2 にアップロードした動画を、**毎時（JST 日中）に 1 本ずつ Instagram、YouTube、IFTTT（Threads）に自動投稿し、投稿後は削除する** GitHub Actions Bot です。
-複数アカウント対応：**Instagram 3 アカウント**、**YouTube 2 アカウント**をランダムに使い分けます。
+Cloudflare R2 にアップロードした動画を、**毎時（JST 日中）に 1 本ずつ Instagram、YouTube、Facebook Pages、IFTTT（Threads）に自動投稿し、投稿後は削除する** GitHub Actions Bot です。
+複数アカウント対応：**Instagram 3 アカウント**、**YouTube 2 アカウント**、**Facebook Pages**をランダムに使い分けます。
 ---
 
 ## 機能概要
@@ -11,6 +11,7 @@ Cloudflare R2 にアップロードした動画を、**毎時（JST 日中）に
 - **スケジュール**: GitHub Actions の cron（毎時、JST 10〜18 時）
 - **Instagram**: Graph API を利用し投稿（キャプション＝ファイル名）
 - **YouTube**: Data API v3 を利用し投稿（タイトル/説明＝ファイル名）
+- **Facebook Pages**: Reels Publishing API を利用しリール投稿（説明＝ファイル名）
 - **ファイル名 → メタデータ**
 
   - `_` → スペースに変換
@@ -19,7 +20,11 @@ Cloudflare R2 にアップロードした動画を、**毎時（JST 日中）に
   - **YouTube タイトル**: 先頭 100 文字
   - **YouTube 説明**: ファイル名全文
 
-- **削除ポリシー**: IG/YouTube/IFTTT 全て成功したら R2 から削除。一つでも失敗なら保持して再挑戦。
+- **削除ポリシー**: IG/FB/YouTube/IFTTT 全て成功したら R2 から削除。一つでも失敗なら保持して再挑戦。
+- **プレフィックス制御**:
+  - `YT_IG_SK`: YouTube、Instagram、Facebook をスキップ（IFTTT のみ）
+  - `YT_SK`: YouTube のみスキップ（Instagram、Facebook、IFTTT は実行）
+  - `ROB_`: ROB 用の Instagram アカウント（とFacebook Page）を使用、YouTube をスキップ
 
 ---
 
@@ -68,6 +73,24 @@ Cloudflare R2 にアップロードした動画を、**毎時（JST 日中）に
 ]
 ```
 
+#### ROB用アカウント（オプション）
+
+ファイル名に `ROB_` プレフィックスが付いている場合に使用されます。
+
+- `ROB_IG_ACCOUNT`（JSON）
+
+```json
+{ "userId": "1789xxxxxxxxxxxx", "accessToken": "EAAG..." }
+```
+
+- `ROB_FB_PAGE`（JSON、オプション）
+
+```json
+{ "pageId": "123456789012345", "accessToken": "EAAG..." }
+```
+
+**注意：** `ROB_` プレフィックスが付いているファイルは、通常のInstagramアカウントリストからランダムに選ばれる代わりに `ROB_IG_ACCOUNT` を使用し、YouTubeはスキップされます。`ROB_FB_PAGE` が設定されている場合は、それも使用されます。
+
 #### YouTube（3 アカ）
 
 - `GOOGLE_CLIENT_ID`
@@ -104,6 +127,34 @@ Cloudflare R2 にアップロードした動画を、**毎時（JST 日中）に
    - 取得した `refresh_token` を `YT_ACCOUNTS` に追加
 
 **注意：** 各 YouTube チャンネルごとに個別にリフレッシュトークンを取得する必要があります。
+
+#### Facebook Pages（オプション）
+
+- `FB_PAGES`（JSON）
+
+```json
+[
+  { "pageId": "123456789012345", "accessToken": "EAAG..." },
+  { "pageId": "987654321098765", "accessToken": "EAAG..." }
+]
+```
+
+**Facebook Pages アクセストークンの取得方法：**
+
+1. **Facebook Developer Console でアプリを作成**
+   - https://developers.facebook.com/apps/
+   - 新しいアプリを作成
+
+2. **必要な権限を追加**
+   - `pages_show_list`
+   - `pages_read_engagement`
+   - `pages_manage_posts`
+
+3. **ページアクセストークンを取得**
+   - Graph API Explorer または OAuth フローを使用
+   - ページ ID とアクセストークンを取得
+
+**注意：** `YT_IG_SK` プレフィックスが付いているファイルは、Facebook への投稿もスキップされます。
 
 #### IFTTT（Threads）
 
@@ -151,6 +202,7 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           YT_ACCOUNTS: ${{ secrets.YT_ACCOUNTS }}
+          FB_PAGES: ${{ secrets.FB_PAGES }}
           IFTTT_WEBHOOK_KEY: ${{ secrets.IFTTT_WEBHOOK_KEY }}
           IFTTT_EVENT_NAME: "r2_to_threads"
           POST_WINDOW_JST: "10-18"
@@ -163,7 +215,7 @@ jobs:
 
 1. R2 バケット直下から動画を 1 本ピックアップ
 2. ファイル名 → キャプション/タイトル/説明を生成
-3. IG アカウント（3 つからランダム）、YT アカウント（2 つからランダム）、IFTTT（Threads）に投稿
+3. IG アカウント（3 つからランダム）、FB Pages（設定されている場合）、YT アカウント（2 つからランダム）、IFTTT（Threads）に投稿
 4. 全て成功したら R2 から削除。一つでも失敗したら残して次回再挑戦
 
 ---
@@ -171,8 +223,14 @@ jobs:
 ## 制約
 
 - **Instagram API**: 24 時間で最大 100 件まで
+- **Facebook Reels API**: 24 時間で最大 30 件まで
 - **YouTube API**: 1 動画=1600 クォータ、1 日 1 万まで（安全圏は 6 本/日）
 - **ファイル形式**: mp4 (H.264/AAC) 必須。`Content-Type: video/mp4` で保存されていること
+- **Facebook Reels の動画仕様**:
+  - アスペクト比: 9:16
+  - 解像度: 1080x1920（推奨）、最小 540x960
+  - フレームレート: 24-60 fps
+  - 長さ: 3-90 秒
 
 ---
 
