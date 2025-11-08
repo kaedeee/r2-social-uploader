@@ -2,12 +2,14 @@ import {
   S3Client,
   ListObjectsV2Command,
   DeleteObjectCommand,
+  PutObjectCommand,
+  GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import axios from "axios";
 import { postInstagram } from "./instagram.mjs";
 import { uploadYouTube } from "./youtube.mjs";
 import { postIFTTT } from "./ifttt.mjs";
-import { postFacebookReel } from "./facebook.mjs";
+import { postFacebookVideo } from "./facebook.video-api.mjs";
 
 // ==== 環境変数 ====
 const {
@@ -591,7 +593,7 @@ async function main() {
       } else {
         // Facebook用のテキスト: #の手前まで
         const fbCaption = caption.split("#")[0].trim();
-        const fbRes = await postFacebookReel({
+        const fbRes = await postFacebookVideo({
           pageId: fbAcc.pageId,
           accessToken: fbAcc.accessToken,
           videoUrl: url,

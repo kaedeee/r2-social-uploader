@@ -1,6 +1,7 @@
 import axios from "axios";
 
 // https://developers.facebook.com/docs/video-api/guides/publishing
+// バックアップ: 旧 Video API を使用したコード
 
 export async function postFacebookReel({
   pageId,
@@ -50,3 +51,10 @@ export async function postFacebookReel({
     };
   }
 }
+
+
+
+
+
+
+
